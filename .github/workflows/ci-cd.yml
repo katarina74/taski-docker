@@ -1,4 +1,4 @@
-name: Taski Deployment
+name: Main Taski workflow
 
 on:
   push:
@@ -65,77 +65,62 @@ jobs:
         cd frontend/
         npm run test
 
-  build_images:
-    name: Build Docker images
+  build_and_push_to_docker_hub:
+    name: Push Docker images to DockerHub
     runs-on: ubuntu-latest
     needs: [tests, frontend_tests]
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3
       
-      - name: Login to Docker Hub
-        run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
       
-      - name: Build and push Backend
-        run: |
-          docker build -t katarina74/taski_backend:latest ./backend/
-          docker push katarina74/taski_backend:latest
+      - name: Login to Docker 
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Frontend
-        run: |
-          docker build -t katarina74/taski_frontend:latest ./frontend/
-          docker push katarina74/taski_frontend:latest
+      - name: Push Backend to DockerHub
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend/
+          push: true
+          tags: katarina74/taski_backend:latest
       
-      - name: Build and push Gateway
-        run: |
-          docker build -t katarina74/taski_gateway:latest ./gateway/
-          docker push katarina74/taski_gateway:latest
+      - name: Push Frontend to DockerHub
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend/
+          push: true
+          tags: katarina74/taski_frontend:latest
+      
+      - name: Push Gateway to DockerHub
+        uses: docker/build-push-action@v4
+        with:
+          context: ./gateway/
+          push: true
+          tags: katarina74/taski_gateway:latest
 
   deploy:
     runs-on: ubuntu-latest
     needs: 
-      - build_images
+      - build_and_push_to_docker_hub
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
-      
-      - name: Create .env file
-        run: |
-          cat > .env << 'EOF'
-          DB_ENGINE=$DB_ENGINE
-          DB_NAME=$DB_NAME
-          POSTGRES_USER=$POSTGRES_USER
-          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-          DB_HOST=$DB_HOST
-          DB_PORT=$DB_PORT
-          SECRET_KEY=$SECRET_KEY
-          DEBUG=$DEBUG
-          EOF
-        env:
-          DB_ENGINE: ${{ secrets.DB_ENGINE }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          DEBUG: ${{ secrets.DEBUG }}
-      
-      - name: Copy files to server
+      # Копируем docker-compose.production.yml на продакшен-сервер
+      - name: Copy docker-compose.yml via ssh
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          source: "docker-compose.production.yml,.env"
+          source: "docker-compose.production.yml"
           target: "taski"
-      
-      - name: Run deployment
+      - name: Executing remote ssh commands to deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -144,22 +129,12 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
             cd taski
+            # Выполняет pull образов с Docker Hub
             sudo docker compose -f docker-compose.production.yml pull
+            # Перезапускает все контейнеры в Docker Compose
             sudo docker compose -f docker-compose.production.yml down
             sudo docker compose -f docker-compose.production.yml up -d
-            sleep 30
+            # Выполняет миграции и сбор статики
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
-            sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --noinput
+            sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
-            sudo docker compose -f docker-compose.production.yml ps
-
-  send_message:
-    runs-on: ubuntu-latest
-    needs: deploy
-    steps:
-    - name: Send message
-      uses: appleboy/telegram-action@master
-      with:
-        to: ${{ secrets.TELEGRAM_TO }}
-        token: ${{ secrets.TELEGRAM_TOKEN }}
-        message: Деплой успешно выполнен!

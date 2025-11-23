@@ -122,9 +122,10 @@ jobs:
           ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
       
       # Копируем docker-compose.production.yml на продакшен-сервер
-      - name: Copy docker-compose.yml via scp with passphrase
+            - name: Copy docker-compose.yml via rsync with passphrase
         run: |
-          sshpass -p "${{ secrets.SSH_PASSPHRASE }}" scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
+          sudo apt-get install -y rsync
+          sshpass -p "${{ secrets.SSH_PASSPHRASE }}" rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
       
       - name: Executing remote ssh commands to deploy
         run: |

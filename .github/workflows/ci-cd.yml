@@ -114,24 +114,34 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          # Добавляем ключ в ssh-agent
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa
+          # Добавляем хост в known_hosts
           ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+          # Проверяем подключение
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "echo 'SSH connection successful'"
       
       # Копируем docker-compose.production.yml на продакшен-сервер
       - name: Copy docker-compose.yml via scp
         run: |
-          scp -i ~/.ssh/id_rsa docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
       
       - name: Executing remote ssh commands to deploy
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "
             cd taski
+            echo 'Starting deployment...'
             # Выполняет pull образов с Docker Hub
             sudo docker compose -f docker-compose.production.yml pull
             # Перезапускает все контейнеры в Docker Compose
             sudo docker compose -f docker-compose.production.yml down
             sudo docker compose -f docker-compose.production.yml up -d
+            # Ждем немного чтобы контейнеры запустились
+            sleep 10
             # Выполняет миграции и сбор статики
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --noinput
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
+            echo 'Deployment completed successfully'
           "

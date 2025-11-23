@@ -109,29 +109,26 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
       
-      - name: Setup SSH with passphrase
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+      
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Добавляем хост в known_hosts
           ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
-          
-          # Запускаем ssh-agent и добавляем ключ с паролем
-          eval "$(ssh-agent -s)"
-          echo "${{ secrets.SSH_PASSPHRASE }}" | ssh-add ~/.ssh/id_rsa
-          
-          # Проверяем что ключ добавлен
-          ssh-add -l
       
       # Копируем docker-compose.production.yml на продакшен-сервер
-      - name: Copy docker-compose.yml via scp
+      - name: Copy docker-compose.yml via scp with passphrase
         run: |
-          scp -o BatchMode=yes -o StrictHostKeyChecking=no docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
+          sshpass -p "${{ secrets.SSH_PASSPHRASE }}" scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
       
       - name: Executing remote ssh commands to deploy
         run: |
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} "
+          sshpass -p "${{ secrets.SSH_PASSPHRASE }}" ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "
             cd taski
             echo 'Starting deployment...'
             # Выполняет pull образов с Docker Hub

@@ -121,12 +121,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
       
-      # Копируем docker-compose.production.yml на продакшен-сервер
-      - name: Copy docker-compose.yml via rsync with passphrase
+      - name: Copy docker-compose.yml using cat over SSH
         run: |
-          sudo apt-get install -y rsync
-          sshpass -p "${{ secrets.SSH_PASSPHRASE }}" rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
-      
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+          cat docker-compose.production.yml | ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "mkdir -p taski && cat > taski/docker-compose.production.yml"
       - name: Executing remote ssh commands to deploy
         run: |
           sshpass -p "${{ secrets.SSH_PASSPHRASE }}" ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "

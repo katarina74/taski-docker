@@ -1,4 +1,4 @@
-name: Taski CI/CD Pipeline
+name: Taski Deployment
 
 on:
   push:
@@ -65,7 +65,7 @@ jobs:
         cd frontend/
         npm run test
 
-  build_docker:
+  build_images:
     name: Build Docker images
     runs-on: ubuntu-latest
     needs: [tests, frontend_tests]
@@ -98,7 +98,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: 
-      - build_docker
+      - build_images
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -131,7 +131,6 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           source: "docker-compose.production.yml,.env"
           target: "taski"
       
@@ -141,7 +140,6 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
             cd taski
             sudo docker compose -f docker-compose.production.yml pull
@@ -153,7 +151,7 @@ jobs:
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
             sudo docker compose -f docker-compose.production.yml ps
 
-  notify:
+  send_message:
     runs-on: ubuntu-latest
     needs: deploy
     steps:

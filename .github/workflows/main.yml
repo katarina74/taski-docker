@@ -64,7 +64,6 @@ jobs:
       run: |
         cd frontend/
         npm run test
-
   build_and_push_to_docker_hub:
     name: Push Docker images to DockerHub
     runs-on: ubuntu-latest
@@ -87,22 +86,21 @@ jobs:
         with:
           context: ./backend/
           push: true
-          tags: katarina74/taski_backend:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/taski_backend:latest
       
       - name: Push Frontend to DockerHub
         uses: docker/build-push-action@v4
         with:
           context: ./frontend/
           push: true
-          tags: katarina74/taski_frontend:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/taski_frontend:latest
       
       - name: Push Gateway to DockerHub
         uses: docker/build-push-action@v4
         with:
           context: ./gateway/
           push: true
-          tags: katarina74/taski_gateway:latest
-
+          tags: ${{ secrets.DOCKER_USERNAME }}/taski_gateway:latest
   deploy:
     runs-on: ubuntu-latest
     needs: 

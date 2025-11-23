@@ -109,25 +109,21 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
       
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+      
       # Копируем docker-compose.production.yml на продакшен-сервер
-      - name: Copy docker-compose.yml via ssh
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          source: "docker-compose.production.yml"
-          target: "taski"
+      - name: Copy docker-compose.yml via scp
+        run: |
+          scp -i ~/.ssh/id_rsa docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/
       
       - name: Executing remote ssh commands to deploy
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          script: |
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "
             cd taski
             # Выполняет pull образов с Docker Hub
             sudo docker compose -f docker-compose.production.yml pull
@@ -138,3 +134,4 @@ jobs:
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --noinput
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
+          "

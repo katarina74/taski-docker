@@ -65,8 +65,8 @@ jobs:
         cd frontend/
         npm run test
 
-  build_images:
-    name: Build and push Docker images
+  build_and_push_to_docker_hub:
+    name: Push Docker images to DockerHub
     runs-on: ubuntu-latest
     needs: [tests, frontend_tests]
     steps:
@@ -78,42 +78,34 @@ jobs:
       
       - name: Login to Docker Hub
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
       
       - name: Build and push Backend
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/taski_backend:latest ./backend/
-          docker push ${{ secrets.DOCKER_USERNAME }}/taski_backend:latest
+          docker build -t katarina74/taski_backend:latest ./backend/
+          docker push katarina74/taski_backend:latest
       
       - name: Build and push Frontend
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/taski_frontend:latest ./frontend/
-          docker push ${{ secrets.DOCKER_USERNAME }}/taski_frontend:latest
+          docker build -t katarina74/taski_frontend:latest ./frontend/
+          docker push katarina74/taski_frontend:latest
       
       - name: Build and push Gateway
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/taski_gateway:latest ./gateway/
-          docker push ${{ secrets.DOCKER_USERNAME }}/taski_gateway:latest
+          docker build -t katarina74/taski_gateway:latest ./gateway/
+          docker push katarina74/taski_gateway:latest
 
   deploy:
     runs-on: ubuntu-latest
     needs: 
-      - build_images
+      - build_and_push_to_docker_hub
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
       
-      - name: Check if docker-compose.production.yml exists
+      - name: Create .env file
         run: |
-          if [ ! -f "docker-compose.production.yml" ]; then
-            echo "ERROR: docker-compose.production.yml not found!"
-            ls -la
-            exit 1
-          fi
-      
-      - name: Create .env file from secrets
-        run: |
-          cat > .env << EOF
+          cat > .env << 'EOF'
           DB_ENGINE=${{ secrets.DB_ENGINE }}
           DB_NAME=${{ secrets.DB_NAME }}
           POSTGRES_USER=${{ secrets.POSTGRES_USER }}
@@ -124,30 +116,17 @@ jobs:
           DEBUG=${{ secrets.DEBUG }}
           EOF
       
-      - name: Copy docker-compose.yml via ssh
+      - name: Copy files to server
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          source: "docker-compose.production.yml"
+          source: "docker-compose.production.yml,.env"
           target: "taski"
       
-      - name: Copy .env file via ssh
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          source: ".env"
-          target: "taski"
-      
-      - name: Clean up .env file
-        run: rm -f .env
-      
-      - name: Executing remote ssh commands to deploy
+      - name: Run deployment
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -156,7 +135,6 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
             cd taski
-            ls -la
             sudo docker compose -f docker-compose.production.yml pull
             sudo docker compose -f docker-compose.production.yml down
             sudo docker compose -f docker-compose.production.yml up -d

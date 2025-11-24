@@ -103,13 +103,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Check network connectivity
+      - name: Setup SSH
         run: |
-          echo "Testing basic network connectivity..."
-          ping -c 3 ${{ secrets.HOST }} || echo "Ping test completed"
-          
-          echo "Testing SSH port..."
-          nc -z -w 5 ${{ secrets.HOST }} 22 && echo "✅ SSH port is open" || echo "❌ SSH port is closed"
-          
-          echo "Testing with telnet..."
-          timeout 5s telnet ${{ secrets.HOST }} 22 || echo "Telnet test completed"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+
+      - name: Debug SSH connection in detail
+        run: |
+          echo "=== Testing SSH connection with maximum verbosity ==="
+          timeout 30s ssh -vvv -o ConnectTimeout=10 -o BatchMode=yes -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "echo 'SSH SUCCESS'" || echo "SSH failed with code: $?"

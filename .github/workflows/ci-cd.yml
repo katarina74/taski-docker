@@ -102,58 +102,14 @@ jobs:
           tags: katarina74/taski_gateway:latest  
   deploy:
     runs-on: ubuntu-latest
-    needs: 
-      - build_and_push_to_docker_hub
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-      
-      - name: Debug - Setup SSH
+      - name: Check network connectivity
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+          echo "Testing basic network connectivity..."
+          ping -c 3 ${{ secrets.HOST }} || echo "Ping test completed"
           
-          echo "=== SSH Key Info ==="
-          ssh-keygen -l -f ~/.ssh/id_rsa
-          echo "=== Known hosts ==="
-          cat ~/.ssh/known_hosts
-
-      - name: Debug - Test Basic SSH
-        run: |
-          echo "Testing basic SSH connection..."
-          ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "echo '✅ Basic SSH works'"
-
-      - name: Debug - Test Directory Creation
-        run: |
-          echo "Testing if we can create directories..."
-          ssh -o BatchMode=yes -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "mkdir -p taski && echo '✅ Directory creation works'"
-
-      - name: Debug - Test SCP
-        run: |
-          echo "Testing SCP..."
-          scp -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/id_rsa docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:taski/test_scp.txt
-          echo "✅ SCP works"
-
-      - name: Debug - Check Docker Access
-        run: |
-          echo "Testing Docker access..."
-          ssh -o BatchMode=yes -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "
-            echo 'Docker version:'
-            sudo docker --version || echo '❌ Docker not available'
-            echo 'Docker Compose version:'
-            sudo docker compose version || echo '❌ Docker Compose not available'
-          "
-
-      - name: Debug - Full Deploy Test
-        run: |
-          echo "Testing full deployment commands..."
-          ssh -o BatchMode=yes -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "
-            cd taski
-            echo 'Testing Docker Compose pull...'
-            sudo docker compose -f docker-compose.production.yml pull || echo '❌ Pull failed'
-            echo 'Testing Docker Compose down...'
-            sudo docker compose -f docker-compose.production.yml down || echo '❌ Down failed'
-            echo '✅ All deployment commands ready'
-          "
+          echo "Testing SSH port..."
+          nc -z -w 5 ${{ secrets.HOST }} 22 && echo "✅ SSH port is open" || echo "❌ SSH port is closed"
+          
+          echo "Testing with telnet..."
+          timeout 5s telnet ${{ secrets.HOST }} 22 || echo "Telnet test completed"

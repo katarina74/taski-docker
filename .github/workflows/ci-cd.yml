@@ -102,7 +102,12 @@ jobs:
           tags: katarina74/taski_gateway:latest  
   deploy:
     runs-on: ubuntu-latest
+    needs: 
+      - build_and_push_to_docker_hub
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+      
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -110,7 +115,21 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
 
-      - name: Debug SSH connection in detail
+      - name: Test connection
         run: |
-          echo "=== Testing SSH connection with maximum verbosity ==="
-          timeout 30s ssh -vvv -o ConnectTimeout=10 -o BatchMode=yes -i ~/.ssh/id_rsa ${{ secrets.USER }}@${{ secrets.HOST }} "echo 'SSH SUCCESS'" || echo "SSH failed with code: $?"
+          ssh -o BatchMode=yes -i ~/.ssh/id_rsa yc-user@${{ secrets.HOST }} "echo '✅ New SSH key works!'"
+
+      - name: Deploy
+        run: |
+          scp -i ~/.ssh/id_rsa docker-compose.production.yml yc-user@${{ secrets.HOST }}:taski/
+          ssh -i ~/.ssh/id_rsa yc-user@${{ secrets.HOST }} "
+            cd taski
+            sudo docker compose -f docker-compose.production.yml pull
+            sudo docker compose -f docker-compose.production.yml down
+            sudo docker compose -f docker-compose.production.yml up -d
+            sleep 10
+            sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
+            sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --noinput
+            sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
+            echo 'Deployment completed'
+          "
